@@ -27,6 +27,7 @@ async def connect(
     stream_handler: Optional[QuicStreamHandler] = None,
     wait_connected: bool = True,
     local_port: int = 0,
+    original_destination_connection_id: Optional[bytes] = None
 ) -> AsyncGenerator[QuicConnectionProtocol, None]:
     """
     Connect to a QUIC server at the given `host` and `port`.
@@ -72,7 +73,9 @@ async def connect(
     if configuration.server_name is None:
         configuration.server_name = server_name
     connection = QuicConnection(
-        configuration=configuration, session_ticket_handler=session_ticket_handler
+        configuration=configuration, 
+        session_ticket_handler=session_ticket_handler,
+        original_destination_connection_id=original_destination_connection_id 
     )
 
     # explicitly enable IPv4/IPv6 dual stack
