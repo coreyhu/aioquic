@@ -66,5 +66,6 @@ setuptools.setup(
         "cryptography >= 3.1",
         "pylsqpack >= 0.3.3, < 0.4.0",
         "pyopenssl >= 20, < 22",
+        "asyncio_atexit >= 1.0.1",
     ],
 )

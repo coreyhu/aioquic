@@ -1,7 +1,11 @@
 import asyncio
 import ipaddress
 import socket
+from typing import Tuple
+from functools import wraps
+import asyncio_atexit
 from contextlib import asynccontextmanager
+from asyncio import DatagramTransport
 from typing import AsyncGenerator, Callable, Optional, cast
 
 from ..quic.configuration import QuicConfiguration
@@ -15,9 +19,7 @@ __all__ = ["connect"]
 if not hasattr(socket, "IPPROTO_IPV6"):
     socket.IPPROTO_IPV6 = 41
 
-
-@asynccontextmanager
-async def connect(
+async def _connect(
     host: str,
     port: int,
     *,
@@ -25,10 +27,9 @@ async def connect(
     create_protocol: Optional[Callable] = QuicConnectionProtocol,
     session_ticket_handler: Optional[SessionTicketHandler] = None,
     stream_handler: Optional[QuicStreamHandler] = None,
-    wait_connected: bool = True,
     local_port: int = 0,
     original_destination_connection_id: Optional[bytes] = None
-) -> AsyncGenerator[QuicConnectionProtocol, None]:
+) -> Tuple[DatagramTransport, QuicConnectionProtocol, Tuple[str]]:
     """
     Connect to a QUIC server at the given `host` and `port`.
 
@@ -94,6 +95,16 @@ async def connect(
         sock=sock,
     )
     protocol = cast(QuicConnectionProtocol, protocol)
+    return transport, protocol, addr
+
+@wraps(_connect)
+@asynccontextmanager
+async def connect(
+    *args, wait_connected: bool = True, **kwargs
+) -> AsyncGenerator[QuicConnectionProtocol, None]:
+
+    transport, protocol, addr = await _connect(*args, **kwargs)
+
     try:
         protocol.connect(addr)
         if wait_connected:
@@ -103,3 +114,23 @@ async def connect(
         protocol.close()
         await protocol.wait_closed()
         transport.close()
+
+class ClientConnection:
+    def __init__(self, *args, wait_connected: bool = True, **kwargs):
+        transports, protocol, addr = _connect(*args, **kwargs)
+        self.transports = transports
+        self.protocol = protocol
+        self.addr = addr
+        self.wait_connected = wait_connected
+
+        asyncio_atexit.register(self.close)
+    
+    async def connect(self):
+        self.protocol.connect(self.addr)
+        if self.wait_connected:
+            await self.protocol.wait_connected()
+
+    async def close(self):
+        self.protocol.close()
+        await self.protocol.wait_closed()
+        self.transport.close()
